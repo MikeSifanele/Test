@@ -52,6 +52,29 @@ namespace Test
         SlowPeak = 4,
         Count
     }
+    public static class FibonacciLevels
+    {
+        /// <summary>
+        /// 23.6%
+        /// </summary>
+        public static float Level1 = .236f;
+        /// <summary>
+        /// 38.2%
+        /// </summary>
+        public static float Level2 = .382f;
+        /// <summary>
+        /// 50%
+        /// </summary>
+        public static float Level3 = .5f;
+        /// <summary>
+        /// 61.8%
+        /// </summary>
+        public static float Level4 = .618f;
+        /// <summary>
+        /// 76.4%
+        /// </summary>
+        public static float Level5 = .764f;
+    }
     public struct PositionTime
     {
         public DateTime Open;
@@ -79,6 +102,14 @@ namespace Test
             Index = index;
         }
     }
+    public class Fibonacci
+    {
+        public float Level1;
+        public float Level2;
+        public float Level3;
+        public float Level4;
+        public float Level5;
+    }
     public struct Rates
     {
         public string Time;
@@ -89,7 +120,7 @@ namespace Test
         public SignalEnum Signal;
         public float FastEma;
         public float SlowEma;
-
+        public Fibonacci Fibonacci;
         public Rates(string[] data)
         {
             Time = data[0];
@@ -103,6 +134,8 @@ namespace Test
 
             FastEma = float.Parse(data[6], CultureInfo.InvariantCulture.NumberFormat);
             SlowEma = float.Parse(data[7], CultureInfo.InvariantCulture.NumberFormat);
+
+            Fibonacci = new Fibonacci();
         }
         public float[] ToFloatArray()
         {
@@ -151,12 +184,27 @@ namespace Test
             using (var streamReader = new StreamReader(@"C:\Users\MikeSifanele\OneDrive - Optimi\Documents\Data\rates_rates.DAT"))
             {
                 List<Rates> rates = new List<Rates>();
+                Fibonacci fibonacci = null;
 
                 _ = streamReader.ReadLine();
 
+                int i = 0;
                 while (!streamReader.EndOfStream)
                 {
                     rates.Add(new Rates(streamReader.ReadLine().Split(',')));
+
+                    if (i >= 239)
+                    {
+                        fibonacci = CalculateFibonacciLevels(ref rates, i);
+
+                        rates[i].Fibonacci.Level1 = fibonacci.Level1;
+                        rates[i].Fibonacci.Level2 = fibonacci.Level2;
+                        rates[i].Fibonacci.Level3 = fibonacci.Level3;
+                        rates[i].Fibonacci.Level4 = fibonacci.Level4;
+                        rates[i].Fibonacci.Level5 = fibonacci.Level5;
+                    }
+
+                    i++;
                 }
 
                 if (rates[0].Signal > 0)
@@ -166,6 +214,38 @@ namespace Test
             }
 
             Reset();
+        }
+        public Fibonacci CalculateFibonacciLevels(ref List<Rates> rates, int index)
+        {
+            try
+            {
+                float high = 0f;
+                float low = 100_000f;
+
+                for (int i = index - 240; i < index; i++)
+                {
+                    if (rates[i].High > high)
+                        high = rates[i].High;
+
+                    if (rates[i].Low < low)
+                        low = rates[i].Low;
+                }
+
+                float diff = high - low;
+
+                return new Fibonacci()
+                {
+                    Level1 = high - (diff * FibonacciLevels.Level1),
+                    Level2 = high - (diff * FibonacciLevels.Level2),
+                    Level3 = high - (diff * FibonacciLevels.Level3),
+                    Level4 = high - (diff * FibonacciLevels.Level4),
+                    Level5 = high - (diff * FibonacciLevels.Level5),
+                };
+            }
+            catch (Exception)
+            {
+                return new Fibonacci();
+            }
         }
         public float[] GetObservation()
         {
