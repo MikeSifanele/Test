@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -84,13 +84,6 @@ namespace Test
             Open = Convert.ToDateTime(timestamp);
             Close = null;
         }
-    }
-    public struct Position
-    {
-        public PositionTime PositionTime;
-        public float OpenPrice;
-        public float ClosePrice;
-        public int Profit;
     }
     public struct CurrentSignal
     {
