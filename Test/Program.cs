@@ -14,16 +14,17 @@ namespace Test
         static void Main(string[] args)
         {
             ExpertAction action;
-            float reward;
             _mlTrader = new MLTrader();
 
             while (!_mlTrader.IsLastStep)
             {
                 _ = _mlTrader.GetObservation();
                 action = _mlTrader.GetExpertAction();
-                reward = _mlTrader.GetReward(action.MarketOrder, action.StopLoss);
 
-                _mlTrader.AddReward(reward);
+                if (action.MarketOrder != MarketOrderEnum.Nothing)
+                    _mlTrader.OpenPosition(action.MarketOrder, action.StopLoss);
+
+                _mlTrader.UpdatePositions();
             }
 
             Console.WriteLine(_mlTrader.GetReport());
@@ -34,7 +35,7 @@ namespace Test
     public struct ExpertAction
     {
         public MarketOrderEnum MarketOrder;
-        public int StopLoss;
+        public int? StopLoss;
         public ExpertAction(MarketOrderEnum marketOrder, int stopLoss = 30)
         {
             MarketOrder = marketOrder;
@@ -143,6 +144,7 @@ namespace Test
     public class Position
     {
         public PositionTime PositionTime;
+        public MarketOrderEnum MarketOrder;
         public float OpenPrice;
         public float ClosePrice;
         public int? StopLoss;
@@ -155,9 +157,8 @@ namespace Test
         private readonly int _observationLength = 50;
         private readonly int _startIndex = 240;
         private int _index;
-        private float _accuracySum = 0;
         private int _epoch = 0;
-        private float _reward = 0;
+        private float _accumulativeReward = 0;
         private float _maximumReward = 0;
         /// <summary>
         /// Active or current non-neutral signal.
@@ -171,7 +172,7 @@ namespace Test
         public bool IsLastStep => _index == MaximumRates - 1;
         public int MaximumRates => _rates.Length;
         public float MaximumReward => _maximumReward;
-        public float CumulativeReward => _reward;
+        public float AccumulativeReward => _accumulativeReward;
         public CurrentSignal CurrentSignal => _currentSignal;
         public List<Position> GetOpenPositions => _openPositions;
         public List<Position> GetClosedPositions => _closedPositions;
@@ -286,13 +287,14 @@ namespace Test
 
             return new ExpertAction(MarketOrderEnum.Nothing, 0);
         }
-        public void OpenPosition(int? stopLoss = null)
+        public void OpenPosition(MarketOrderEnum marketOrder, int? stopLoss=null)
         {
             try
             {
                 var position = new Position()
                 {
                     PositionTime = new PositionTime(_rates[_index].Time),
+                    MarketOrder = marketOrder,
                     OpenPrice = _rates[_index].Open,
                     StopLoss = stopLoss
                 };
@@ -304,13 +306,13 @@ namespace Test
 
             }
         }
-        public void UpdatePositions(MarketOrderEnum action)
+        public void UpdatePositions()
         {
             try
             {
                 for (int i = 0; i < _openPositions.Count; i++)
                 {
-                    _openPositions[i].Profit = GetPoints(action, _openPositions[i].OpenPrice, _openPositions[i].ClosePrice) ?? 0;
+                    _openPositions[i].Profit = GetPoints(_openPositions[i].MarketOrder, _openPositions[i].OpenPrice, _rates[i].Close) ?? 0;
 
                     if(_openPositions[i].StopLoss.HasValue)
                         if(_openPositions[i].Profit < -_openPositions[i].StopLoss)
@@ -330,6 +332,8 @@ namespace Test
 
                 position.ClosePrice = _rates[_index].Close;
                 position.PositionTime.Close = Convert.ToDateTime(_rates[_index].Time);
+
+                AddReward(position.Profit);
 
                 _openPositions.RemoveAt(index);
                 _closedPositions.Add(position);
@@ -357,19 +361,9 @@ namespace Test
         {
             return GetPoints(action) ?? 0f;
         }
-        public float GetReward(MarketOrderEnum action, int stopLoss)
-        {
-            var points = GetPoints(action) ?? 0f;
-            var risk = GetRisk(action) - stopLoss;
-
-            if (risk < 0f || risk > 4f)
-                return -stopLoss;
-
-            return points;
-        }
         public void AddReward(float reward)
         {
-            _reward += reward;
+            _accumulativeReward += reward;
 
             _maximumReward += reward > 0 ? reward : Math.Abs(reward);
         }
@@ -400,19 +394,26 @@ namespace Test
         public void Reset()
         {
             _epoch++;
-            _reward = 0;
+            _accumulativeReward = 0;
             _index = _startIndex;
         }
         public string GetReport()
         {
-            var maximumReward = _maximumReward;
+            var rewardString = _accumulativeReward.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
+            var maximumRewardString = _maximumReward.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
 
-            var rewardString = _reward.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
-            var maximumRewardString = maximumReward.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
+            StringBuilder stringBuilder = new StringBuilder();
 
-            _accuracySum += _reward / maximumReward * 100;
+            stringBuilder.AppendLine($"Episode ended: {_epoch}\n");
+            stringBuilder.AppendLine($"Reward: ${rewardString}/${maximumRewardString}\n");
+            stringBuilder.AppendLine($"Accuracy: {_accumulativeReward / _maximumReward * 100:f1}%\n");
+            stringBuilder.AppendLine($"Total trades: {_closedPositions.Count}");
+            stringBuilder.AppendLine($"Trades won: {_closedPositions.Where(x => x.Profit > 0).Count()}");
+            stringBuilder.AppendLine($"Trades lost: {_closedPositions.Where(x => x.Profit <= 0).Count()}");
+            stringBuilder.AppendLine($"Maximum profit: {_closedPositions.Max(x => x.Profit).ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"))}");
+            stringBuilder.AppendLine($"Maximum drawdown: {_closedPositions.Min(x => x.Profit).ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"))}");
 
-            return $"Episode ended: {_epoch}\nReward: ${rewardString}/${maximumRewardString}\nAccuracy: {_reward / maximumReward * 100:f1}%\nAverage Accuracy: {_accuracySum / _epoch:f1}%";
+            return stringBuilder.ToString();
         }
     }
 }
