@@ -15,6 +15,7 @@ namespace Test
         {
             ExpertAction action;
             _mlTrader = new MLTrader();
+            MLTrader.Print += WriteToConsole;
 
             while (!_mlTrader.IsLastStep)
             {
@@ -30,6 +31,12 @@ namespace Test
             Console.WriteLine(_mlTrader.GetReport());
 
             Console.ReadKey();
+        }
+        private static void WriteToConsole(string message, bool isSuccess)
+        {
+            Console.ForegroundColor = isSuccess ? ConsoleColor.Green : ConsoleColor.Red;
+            Console.WriteLine($"{DateTime.Now}: {message}");
+            Console.ForegroundColor = ConsoleColor.White;
         }
     }
     public struct ExpertAction
@@ -177,6 +184,10 @@ namespace Test
         public List<Position> GetOpenPositions => _openPositions;
         public List<Position> GetClosedPositions => _closedPositions;
         #endregion
+        #region Delegates
+        public delegate void PrintHandler(string message, bool isSuccess);
+        public static event PrintHandler Print;
+        #endregion
         private static MLTrader _instance;
         public static MLTrader Instance => _instance ?? (_instance = new MLTrader());
         public MLTrader()
@@ -300,6 +311,8 @@ namespace Test
                 };
 
                 _openPositions.Add(position);
+
+                Print?.Invoke($"Opened position, Open time: {position.PositionTime.Open}", true);
             }
             catch (Exception)
             {
@@ -337,6 +350,8 @@ namespace Test
 
                 _openPositions.RemoveAt(index);
                 _closedPositions.Add(position);
+
+                Print?.Invoke($"Closed position, Open time: {position.PositionTime.Open}, Close time: {position.PositionTime.Close}, Profit: ${FormatNumber(position.Profit)}, Accumulatice reward: ${FormatNumber(_accumulativeReward)}", position.Profit > 0);
             }
             catch (Exception)
             {
@@ -399,21 +414,29 @@ namespace Test
         }
         public string GetReport()
         {
-            var rewardString = _accumulativeReward.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
-            var maximumRewardString = _maximumReward.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
+            var rewardString = FormatNumber(_accumulativeReward);
+            var maximumRewardString = FormatNumber(_maximumReward);
 
             StringBuilder stringBuilder = new StringBuilder();
 
             stringBuilder.AppendLine($"Episode ended: {_epoch}\n");
             stringBuilder.AppendLine($"Reward: ${rewardString}/${maximumRewardString}\n");
-            stringBuilder.AppendLine($"Accuracy: {_accumulativeReward / _maximumReward * 100:f1}%\n");
+            stringBuilder.AppendLine($"Accuracy: {FormatNumber(_accumulativeReward / _maximumReward * 100)}%\n");
             stringBuilder.AppendLine($"Total trades: {_closedPositions.Count}");
             stringBuilder.AppendLine($"Trades won: {_closedPositions.Where(x => x.Profit > 0).Count()}");
             stringBuilder.AppendLine($"Trades lost: {_closedPositions.Where(x => x.Profit <= 0).Count()}");
-            stringBuilder.AppendLine($"Maximum profit: {_closedPositions.Max(x => x.Profit).ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"))}");
-            stringBuilder.AppendLine($"Maximum drawdown: {_closedPositions.Min(x => x.Profit).ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"))}");
+            stringBuilder.AppendLine($"Maximum profit: {FormatNumber(_closedPositions.Max(x => x.Profit))}");
+            stringBuilder.AppendLine($"Maximum drawdown: {FormatNumber(_closedPositions.Min(x => x.Profit))}");
 
             return stringBuilder.ToString();
+        }
+        public string FormatNumber(float value)
+        {
+            return value.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
+        }
+        public string FormatNumber(int value)
+        {
+            return value.ToString("N", CultureInfo.CreateSpecificCulture("sv-SE"));
         }
     }
 }
