@@ -33,8 +33,13 @@ namespace Test
     }
     public struct ExpertAction
     {
-        public int MarketOrder;
+        public MarketOrderEnum MarketOrder;
         public int StopLoss;
+        public ExpertAction(MarketOrderEnum marketOrder, int stopLoss = 30)
+        {
+            MarketOrder = marketOrder;
+            StopLoss = stopLoss;
+        }
     }
     public enum MarketOrderEnum
     {
@@ -259,27 +264,27 @@ namespace Test
         }
         public ExpertAction GetExpertAction()
         {
-            var action = new ExpertAction();
-
             switch (_currentSignal.Signal)
             {
                 case SignalEnum.FastValley:
-                    action.MarketOrder = (int)MarketOrderEnum.Buy;
+                    if(GetRisk(MarketOrderEnum.Buy, isExpert: true) < 30)
+                        return new ExpertAction(MarketOrderEnum.Buy);
                     break;
                 case SignalEnum.SlowValley:
-                    action.MarketOrder = (int)MarketOrderEnum.Buy;
+                    if (GetRisk(MarketOrderEnum.Buy, isExpert: true) < 30)
+                        return new ExpertAction(MarketOrderEnum.Buy);
                     break;
                 case SignalEnum.FastPeak:
-                    action.MarketOrder = (int)MarketOrderEnum.Sell;
+                    if (GetRisk(MarketOrderEnum.Sell, isExpert: true) < 30)
+                        return new ExpertAction(MarketOrderEnum.Sell);
                     break;
                 case SignalEnum.SlowPeak:
-                    action.MarketOrder = (int)MarketOrderEnum.Sell;
+                    if (GetRisk(MarketOrderEnum.Sell, isExpert: true) < 30)
+                        return new ExpertAction(MarketOrderEnum.Sell);
                     break;
             }
 
-            action.StopLoss = GetRisk(action.MarketOrder, isExpert: true) + 2;
-
-            return action;
+            return new ExpertAction(MarketOrderEnum.Nothing, 0);
         }
         public void OpenPosition(int? stopLoss = null)
         {
@@ -299,7 +304,7 @@ namespace Test
 
             }
         }
-        public void UpdatePositions(int action)
+        public void UpdatePositions(MarketOrderEnum action)
         {
             try
             {
@@ -348,11 +353,11 @@ namespace Test
 
             }
         }
-        public float GetReward(int action)
+        public float GetReward(MarketOrderEnum action)
         {
             return GetPoints(action) ?? 0f;
         }
-        public float GetReward(int action, int stopLoss)
+        public float GetReward(MarketOrderEnum action, int stopLoss)
         {
             var points = GetPoints(action) ?? 0f;
             var risk = GetRisk(action) - stopLoss;
@@ -368,26 +373,26 @@ namespace Test
 
             _maximumReward += reward > 0 ? reward : Math.Abs(reward);
         }
-        public int GetRisk(int action, bool isExpert = false)
+        public int GetRisk(MarketOrderEnum action, bool isExpert = false)
         {
             var index = isExpert ? _currentSignal.Index : _index;
             var openPrice = action == (int)MarketOrderEnum.Buy ? _rates[index].Low : _rates[index].High;
 
             return GetPoints(action, openPrice, _rates[_index].Open) ?? 0;
         }
-        private int? GetPoints(int action, float? openPrice = null, float? closePrice = null)
+        private int? GetPoints(MarketOrderEnum action, float? openPrice = null, float? closePrice = null)
         {
             openPrice = openPrice ?? _rates[_index].Open;
             closePrice = closePrice ?? _rates[_index].Close;
 
             int? points = 0;
 
-            if (action == (int)MarketOrderEnum.Buy)
+            if (action == MarketOrderEnum.Buy)
                 points = (int?)((closePrice - openPrice) * 10);
-            else if (action == (int)MarketOrderEnum.Sell)
+            else if (action == MarketOrderEnum.Sell)
                 points = (int?)((openPrice - closePrice) * 10);
 
-            if (action == (int)MarketOrderEnum.Nothing)
+            if (action == MarketOrderEnum.Nothing)
                 points = points > 0 ? -points : points;
 
             return points;
