@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -17,7 +17,7 @@ namespace Test
             float reward;
             _mlTrader = new MLTrader();
 
-            while(!_mlTrader.IsLastStep)
+            while (!_mlTrader.IsLastStep)
             {
                 _ = _mlTrader.GetObservation();
                 action = _mlTrader.GetExpertAction();
@@ -51,6 +51,23 @@ namespace Test
         FastPeak = 3,
         SlowPeak = 4,
         Count
+    }
+    public struct PositionTime
+    {
+        public DateTime Open;
+        public DateTime? Close;
+        public PositionTime(string timestamp)
+        {
+            Open = Convert.ToDateTime(timestamp);
+            Close = null;
+        }
+    }
+    public struct Position
+    {
+        public PositionTime PositionTime;
+        public float OpenPrice;
+        public float ClosePrice;
+        public int Profit;
     }
     public struct CurrentSignal
     {
@@ -87,16 +104,24 @@ namespace Test
             FastEma = float.Parse(data[6], CultureInfo.InvariantCulture.NumberFormat);
             SlowEma = float.Parse(data[7], CultureInfo.InvariantCulture.NumberFormat);
         }
-        public float[] ToFloat()
+        public float[] ToFloatArray()
         {
             return new float[] { FastEma, SlowEma, Open, High, Low, Close };
         }
+    }
+    public class Position
+    {
+        public PositionTime PositionTime;
+        public float OpenPrice;
+        public float ClosePrice;
+        public int Profit;
     }
     public class MLTrader
     {
         #region Private fields
         private Rates[] _rates;
         private readonly int _observationLength = 50;
+        private readonly int _startIndex = 240;
         private int _index;
         private float _accuracySum = 0;
         private int _epoch = 0;
@@ -106,14 +131,18 @@ namespace Test
         /// Active or current non-neutral signal.
         /// </summary>
         private CurrentSignal _currentSignal;
+        private List<Position> _openPositions = new List<Position>();
+        private List<Position> _closedPositions = new List<Position>();
         #endregion
         #region Public properties
-        public int CurrentStepIndex => _index - _observationLength;
+        public int CurrentStepIndex => _index - _startIndex;
         public bool IsLastStep => _index == MaximumRates - 1;
         public int MaximumRates => _rates.Length;
         public float MaximumReward => _maximumReward;
         public float CumulativeReward => _reward;
         public CurrentSignal CurrentSignal => _currentSignal;
+        public List<Position> GetOpenPositions => _openPositions;
+        public List<Position> GetClosedPositions => _closedPositions;
         #endregion
         private static MLTrader _instance;
         public static MLTrader Instance => _instance ?? (_instance = new MLTrader());
@@ -144,7 +173,7 @@ namespace Test
 
             for (int i = _index - (_observationLength - 1); i <= _index; i++)
             {
-                observation.AddRange(_rates[i].ToFloat());
+                observation.AddRange(_rates[i].ToFloatArray());
 
                 if (_rates[i].Signal != SignalEnum.Neutral)
                     _currentSignal = new CurrentSignal(_rates[i].Signal, i);
@@ -158,7 +187,7 @@ namespace Test
         {
             var action = new ExpertAction();
 
-            switch(_currentSignal.Signal)
+            switch (_currentSignal.Signal)
             {
                 case SignalEnum.FastValley:
                     action.MarketOrder = (int)MarketOrderEnum.Buy;
@@ -174,9 +203,58 @@ namespace Test
                     break;
             }
 
-            action.StopLoss = GetRisk(action.MarketOrder);
+            action.StopLoss = GetRisk(action.MarketOrder, isExpert: true) + 2;
 
             return action;
+        }
+        public void PlaceTrade()
+        {
+            try
+            {
+                var position = new Position()
+                {
+                    PositionTime = new PositionTime(_rates[_index].Time),
+                    OpenPrice = _rates[_index].Open,
+                };
+
+                _openPositions.Add(position);
+            }
+            catch (Exception)
+            {
+
+            }
+        }
+        public void UpdatePositions(int action)
+        {
+            try
+            {
+                for (int i = 0; i < _openPositions.Count; i++)
+                {
+                    _openPositions[i].Profit = GetPoints(action, _openPositions[i].OpenPrice, _openPositions[i].ClosePrice) ?? 0;
+                }
+            }
+            catch (Exception)
+            {
+
+            }
+        }
+        public void CloseTrade(int index)
+        {
+            try
+            {
+                var position = _openPositions[index];
+
+                position.ClosePrice = _rates[_index].Close;
+                position.PositionTime.Close = Convert.ToDateTime(_rates[_index].Time);
+
+                _openPositions.RemoveAt(index);
+
+                _closedPositions.Add(position);
+            }
+            catch (Exception)
+            {
+
+            }
         }
         public float GetReward(int action)
         {
@@ -198,7 +276,7 @@ namespace Test
 
             _maximumReward += reward > 0 ? reward : Math.Abs(reward);
         }
-        public int GetRisk(int action, bool isExpert=false)
+        public int GetRisk(int action, bool isExpert = false)
         {
             var index = isExpert ? _currentSignal.Index : _index;
             var openPrice = action == (int)MarketOrderEnum.Buy ? _rates[index].Low : _rates[index].High;
@@ -226,7 +304,7 @@ namespace Test
         {
             _epoch++;
             _reward = 0;
-            _index = _observationLength;
+            _index = _startIndex;
         }
         public string GetReport()
         {
