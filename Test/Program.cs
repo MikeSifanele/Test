@@ -140,6 +140,7 @@ namespace Test
         public PositionTime PositionTime;
         public float OpenPrice;
         public float ClosePrice;
+        public int? StopLoss;
         public int Profit;
     }
     public class MLTrader
@@ -280,7 +281,7 @@ namespace Test
 
             return action;
         }
-        public void PlaceTrade()
+        public void OpenPosition(int? stopLoss = null)
         {
             try
             {
@@ -288,6 +289,7 @@ namespace Test
                 {
                     PositionTime = new PositionTime(_rates[_index].Time),
                     OpenPrice = _rates[_index].Open,
+                    StopLoss = stopLoss
                 };
 
                 _openPositions.Add(position);
@@ -304,6 +306,10 @@ namespace Test
                 for (int i = 0; i < _openPositions.Count; i++)
                 {
                     _openPositions[i].Profit = GetPoints(action, _openPositions[i].OpenPrice, _openPositions[i].ClosePrice) ?? 0;
+
+                    if(_openPositions[i].StopLoss.HasValue)
+                        if(_openPositions[i].Profit < -_openPositions[i].StopLoss)
+                            ClosePosition(i);
                 }
             }
             catch (Exception)
@@ -311,7 +317,7 @@ namespace Test
 
             }
         }
-        public void CloseTrade(int index)
+        public void ClosePosition(int index)
         {
             try
             {
@@ -321,8 +327,21 @@ namespace Test
                 position.PositionTime.Close = Convert.ToDateTime(_rates[_index].Time);
 
                 _openPositions.RemoveAt(index);
-
                 _closedPositions.Add(position);
+            }
+            catch (Exception)
+            {
+
+            }
+        }
+        public void ClosePositions()
+        {
+            try
+            {
+                for (int i = 0; i < _openPositions.Count; i++)
+                {
+                    ClosePosition(i);
+                }
             }
             catch (Exception)
             {
