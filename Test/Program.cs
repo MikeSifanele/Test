@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -13,22 +13,41 @@ namespace Test
         static MLTrader _mlTrader;
         static void Main(string[] args)
         {
-            ExpertAction action;
-            _mlTrader = new MLTrader();
             MLTrader.Print += WriteToConsole;
 
-            while (!_mlTrader.IsLastStep)
+            _mlTrader = new MLTrader();
+
+            using(var myWriter = new StreamWriter(@"C:\Users\MikeSifanele\OneDrive - Optimi\Documents\Data\training data.DAT"))
             {
-                _ = _mlTrader.GetObservation();
-                action = _mlTrader.GetExpertAction();
+                StringBuilder states = new StringBuilder();
+                StringBuilder labels = new StringBuilder();
+                StringBuilder state = new StringBuilder();
+                StringBuilder json = new StringBuilder();
 
-                if (action.MarketOrder != MarketOrderEnum.Nothing)
-                    _mlTrader.OpenPosition(action.MarketOrder, action.StopLoss);
+                for (var x = 0; x < 30_000; x++)
+                {
+                    state = new StringBuilder();
+                    var obs = _mlTrader.GetState();
 
-                _mlTrader.UpdatePositions();
+                    for (int i = 0; i < _mlTrader.ObservationLength; i++)
+                    {
+                        state.Append($",[{obs[i].FastEma},{obs[i].SlowEma},{obs[i].High},{obs[i].Low},{obs[i].Close}]");
+                    }
+
+                    states.Append($",[{state.ToString().TrimStart(',')}]");
+
+                    if(_mlTrader.RatesSignal == SignalEnum.Neutral)
+                        labels.Append($",{(int)_mlTrader.CurrentSignal.Signal}");
+                    else
+                        labels.Append($",{(int)_mlTrader.RatesSignal}");
+                }
+
+                json.Append($"{{\"states\":[{states.ToString().TrimStart(',')}],\"labels\":[{labels.ToString().TrimStart(',')}]}}");
+
+                myWriter.Write(json.ToString());
             }
 
-            Console.WriteLine(_mlTrader.GetReport());
+            Console.WriteLine("Done");
 
             Console.ReadKey();
         }
@@ -175,12 +194,14 @@ namespace Test
         private List<Position> _closedPositions = new List<Position>();
         #endregion
         #region Public properties
+        public int ObservationLength => _observationLength;
         public int CurrentStepIndex => _index - _startIndex;
         public bool IsLastStep => _index == MaximumRates - 1;
         public int MaximumRates => _rates.Length;
         public float MaximumReward => _maximumReward;
         public float AccumulativeReward => _accumulativeReward;
         public CurrentSignal CurrentSignal => _currentSignal;
+        public SignalEnum RatesSignal => _rates[_index].Signal;
         public List<Position> GetOpenPositions => _openPositions;
         public List<Position> GetClosedPositions => _closedPositions;
         #endregion
@@ -425,8 +446,8 @@ namespace Test
             stringBuilder.AppendLine($"Total trades: {_closedPositions.Count}");
             stringBuilder.AppendLine($"Trades won: {_closedPositions.Where(x => x.Profit > 0).Count()}");
             stringBuilder.AppendLine($"Trades lost: {_closedPositions.Where(x => x.Profit <= 0).Count()}");
-            stringBuilder.AppendLine($"Maximum profit: {FormatNumber(_closedPositions.Max(x => x.Profit))}");
-            stringBuilder.AppendLine($"Maximum drawdown: {FormatNumber(_closedPositions.Min(x => x.Profit))}");
+            stringBuilder.AppendLine($"Maximum profit: ${FormatNumber(_closedPositions.Max(x => x.Profit))}");
+            stringBuilder.AppendLine($"Maximum drawdown: ${FormatNumber(_closedPositions.Min(x => x.Profit))}");
 
             return stringBuilder.ToString();
         }
